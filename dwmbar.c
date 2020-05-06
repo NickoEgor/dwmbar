@@ -30,6 +30,7 @@ static int screen;
 static Window root;
 
 static int running = 1;
+static int restart = 0;
 
 static char oldStatusStr[BARMAXLEN];
 static char newStatusStr[BARMAXLEN];
@@ -145,12 +146,17 @@ void *periodUpdater(void *vargp) {
 void signalHandler(int signum) {
     (void)signum; // suppress warn
 
-    fprintf(stderr, "\nStopping...\n");
+    fprintf(stderr, "Stopping...\n");
 	running = 0;
 }
 
-/* int main(int argc, char** argv) { */
-int main() {
+void restartHandler(int signum) {
+    restart = 1;
+    signalHandler(signum);
+}
+
+int main(int argc, char** argv) {
+    (void)argc;
     fprintf(stderr, "Starting bar...\n");
 
     if (mkfifo(fifo, 0622) < 0 && errno != EEXIST) {
@@ -171,11 +177,19 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
 
+    // Install SIGUSR1 for restarting
+    struct sigaction rsa;
+    rsa.sa_handler = restartHandler;
+    rsa.sa_flags = 0;
+    sigemptyset(&rsa.sa_mask);
+    sigaction(SIGUSR1, &rsa, NULL);
+
     // Block signals
     sigset_t sigset, oldset;
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGINT);
     sigaddset(&sigset, SIGHUP);
+    sigaddset(&sigset, SIGUSR1);
     sigprocmask(SIG_BLOCK, &sigset, &oldset);
 
     char buffer[256];
@@ -220,5 +234,12 @@ int main() {
 
     fprintf(stderr, "Cleaning up...\n");
     pthread_join(updaterThreadID, NULL);
+
+    if (restart) {
+        sigset_t sigs;
+        sigprocmask(SIG_SETMASK, &sigs, 0);
+        execvp(argv[0], argv);
+    }
+
     return 0;
 }
