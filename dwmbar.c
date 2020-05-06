@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <pthread.h>
@@ -47,13 +48,13 @@ static int running = 1;
 
 static char oldStatusStr[BARMAXLEN];
 static char newStatusStr[BARMAXLEN];
-static char blockVar[BLOCKVARLEN] = "BLOCK_BUTTON";
+static char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
 static char cmd[BLOCKVARLEN + CMDMAXLEN];
 static char cache[LEN(blocks)][BLOCKMAXLEN] = {0};
 
 static int fifoFd;
 
-pthread_t listenerThreadID;
+pthread_t updaterThreadID;
 
 void setRoot(char *status) {
     Display *d = XOpenDisplay(NULL);
@@ -96,7 +97,7 @@ void updateStatus() {
     memset(newStatusStr, 0, strlen(oldStatusStr));
 }
 
-void remove_all(char *str, char to_remove) {
+void removeAll(char *str, char to_remove) {
 	char *read = str;
 	char *write = str;
 	while (*read) {
@@ -110,10 +111,10 @@ void remove_all(char *str, char to_remove) {
 }
 
 /* Opens process *cmd and stores output in *output */
-void getcmd(const Block *block, char *output, int button) {
+void getCommand(const Block *block, char *output, int button) {
     FILE *cmdf;
     if (button) {
-        sprintf(cmd, "%s=%d %s", blockVar, button, block->command);
+        sprintf(cmd, "%s=%d %s", buttonVarName, button, block->command);
         button = 0;
         cmdf = popen(cmd, "r");
     } else {
@@ -128,7 +129,7 @@ void getcmd(const Block *block, char *output, int button) {
         output[i++] = ' ';
 
     fgets(output+i, BLOCKMAXLEN-i, cmdf);
-    remove_all(output, '\n');
+    removeAll(output, '\n');
     i = strlen(output);
 
     if (withSpace)
@@ -138,8 +139,59 @@ void getcmd(const Block *block, char *output, int button) {
     pclose(cmdf);
 }
 
-void *listenerFifo(void *vargp) {
+void *periodUpdater(void *vargp) {
     (void)vargp; // suppress warn
+
+    const Block* current;
+    unsigned int time = 0;
+
+    while (running) {
+        for(size_t i = 0; i < LEN(blocks); i++) {
+            current = blocks + i;
+            if (time % current->interval == 0)
+                getCommand(current, cache[i], 0);
+        }
+        updateStatus();
+        sleep(1);
+        time++;
+    }
+
+    return NULL;
+}
+
+void signalHandler(int signum) {
+    (void)signum; // suppress warn
+
+    printf("Stopping...\n");
+	running = 0;
+}
+
+/* int main(int argc, char** argv) { */
+int main() {
+    if (mkfifo(fifo, 0622) < 0 && errno != EEXIST) {
+        perror("mkfifo");
+        return 1;
+    }
+
+    if (pthread_create(&updaterThreadID, NULL, &periodUpdater, NULL)) {
+        perror("pthread_create");
+        return 1;
+    }
+
+    // Install the signal handler for SIGINT, SIGHUP
+    struct sigaction sa;
+    sa.sa_handler = signalHandler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+
+    // Block signals
+    sigset_t sigset, oldset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGINT);
+    sigaddset(&sigset, SIGHUP);
+    sigprocmask(SIG_BLOCK, &sigset, &oldset);
 
     char buffer[256];
     int block;
@@ -150,71 +202,38 @@ void *listenerFifo(void *vargp) {
         button = 0;
         memset(buffer, 0, strlen(buffer));
 
-        if ((fifoFd = open(fifo, O_RDONLY | O_RSYNC)) < 0) {
+        if ((fifoFd = open(fifo, O_RDONLY | O_RSYNC | O_NONBLOCK)) < 0) {
             perror("open");
-            return NULL;
-        }
-
-        if (read(fifoFd, buffer, LEN(buffer) - 1) < 0) {
-            perror("read");
             continue;
         }
 
-        if (close(fifoFd) < 0)
-            perror("close");
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fifoFd, &readfds);
 
-        if (sscanf(buffer, "%d %u\n", &block, &button) < 0) {
-            perror("sscanf");
-            continue;
+        int ready = pselect(fifoFd+1, &readfds, NULL, NULL, NULL, &oldset);
+        if (ready >= 0) {
+            if (read(fifoFd, buffer, LEN(buffer) - 1) < 0) {
+                perror("read");
+                continue;
+            }
+
+            if (close(fifoFd) < 0)
+                perror("close");
+
+            if (sscanf(buffer, "%d %u\n", &block, &button) < 0) {
+                perror("sscanf");
+                continue;
+            }
+
+            getCommand(&blocks[block-1], cache[block-1], button);
+            updateStatus();
+        } else {
+            perror("Signal");
         }
-
-        getcmd(&blocks[block-1], cache[block-1], button);
-        updateStatus();
     }
 
-    return NULL;
-}
-
-void cleanup() {
-    pthread_join(listenerThreadID, NULL);
-}
-
-void termhandler(int signum) {
-    (void)signum; // suppress warn
-
-	running = 0;
-    cleanup();
-}
-
-/* int main(int argc, char** argv) { */
-int main() {
-    if (mkfifo(fifo, 0622) < 0 && errno != EEXIST) {
-        perror("mkfifo");
-        return 1;
-    }
-
-    if (pthread_create(&listenerThreadID, NULL, &listenerFifo, NULL)) {
-        perror("pthread_create");
-        return 1;
-    }
-
-	signal(SIGTERM, termhandler);
-	signal(SIGINT, termhandler);
-	signal(SIGHUP, termhandler);
-
-    const Block* current;
-    unsigned int time = 0;
-
-    while (running) {
-        for(size_t i = 0; i < LEN(blocks); i++) {
-            current = blocks + i;
-            if (time % current->interval == 0)
-                getcmd(current, cache[i], 0);
-        }
-        updateStatus();
-        sleep(1);
-        time++;
-    }
-
+    printf("Cleaning up...");
+    pthread_join(updaterThreadID, NULL);
     return 0;
 }
