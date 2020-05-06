@@ -58,7 +58,11 @@ void updateStatus() {
     /* leave space for last \0 */
     for (size_t i = 0; i < LEN(blocks) && k < BARMAXLEN - 1; ++i) {
         /* skip first block */
-        if (i) newStatusStr[k++] = delimiter;
+        if (i && k + 3 < BARMAXLEN - 1) {
+            if (withSpaces) newStatusStr[k++] = ' ';
+            newStatusStr[k++] = delimiter;
+            if (withSpaces) newStatusStr[k++] = ' ';
+        }
 
         strncat(newStatusStr + k, cache[i], BARMAXLEN - k - 1);
         k = strlen(newStatusStr);
@@ -110,17 +114,11 @@ void getCommand(const Block *block, char *output, int button) {
         return;
 
     int i = 0;
-    if (withSpace)
-        output[i++] = ' ';
-
     fgets(output+i, BLOCKMAXLEN-i, cmdf);
     removeAll(output, '\n');
     i = strlen(output);
-
-    if (withSpace)
-        output[i++] = ' ';
-
     output[i] = '\0';
+
     pclose(cmdf);
 }
 
@@ -147,12 +145,14 @@ void *periodUpdater(void *vargp) {
 void signalHandler(int signum) {
     (void)signum; // suppress warn
 
-    printf("Stopping...\n");
+    fprintf(stderr, "\nStopping...\n");
 	running = 0;
 }
 
 /* int main(int argc, char** argv) { */
 int main() {
+    fprintf(stderr, "Starting bar...\n");
+
     if (mkfifo(fifo, 0622) < 0 && errno != EEXIST) {
         perror("mkfifo");
         return 1;
@@ -218,7 +218,7 @@ int main() {
         }
     }
 
-    printf("Cleaning up...");
+    fprintf(stderr, "Cleaning up...\n");
     pthread_join(updaterThreadID, NULL);
     return 0;
 }

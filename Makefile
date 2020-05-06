@@ -12,7 +12,7 @@ install: build
 	cp setup ${CONFIG_PATH}
 	cp -r blocks/ ${CONFIG_PATH}
 	mkdir -p ${PREFIX}
-	cp {${BINARY},dwmlistener.sh} ${PREFIX}/bin
+	cp -f {${BINARY},dwmlistener.sh} ${PREFIX}/bin
 	chmod 755 ${PREFIX}/bin/{${BINARY},dwmlistener.sh}
 
 uninstall:
