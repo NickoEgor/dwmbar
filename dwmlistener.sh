@@ -15,11 +15,12 @@ done
 IFS=$OLDIFS
 
 sendSignal() {
-    pkill -RTMIN+${signals["$1"]} dwmbar
+    echo "${signals["$1"]} 0" > /tmp/dwmbar.fifo
 }
 
 listenACPI() {
     acpi_listen | while read -r line ; do
+        sleep 0.1
         case "$line" in
             button/mute*)           sendSignal "volume" ;;
             button/volumeup*)       sendSignal "volume" ;;
