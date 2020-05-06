@@ -1,6 +1,12 @@
 #!/bin/bash
+# vim: ft=sh
 
-source $XDG_CONFIG_HOME/dwmbar/config.sh
+SETUP="$XDG_CONFIG_HOME/dwmbar/setup"
+BLOCKS="$XDG_CONFIG_HOME/dwmbar/blocks"
+
+# setup format:
+# name command signal
+# use <BLOCKS> in setup for blocks in config folder
 
 declare -A signals
 

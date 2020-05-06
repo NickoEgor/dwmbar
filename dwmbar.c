@@ -18,22 +18,7 @@ typedef struct {
     unsigned int interval;
 } Block;
 
-#define BLOCKSPATH "~/.config/dwmbar/blocks"
-static const Block blocks[] = {
-    { BLOCKSPATH"/player",      10 },
-    { BLOCKSPATH"/torrent",     15 },
-    { BLOCKSPATH"/volume",      5  },
-    { BLOCKSPATH"/brightness",  10 },
-    { "xkb-switch",             10 },
-    { BLOCKSPATH"/internet",    5  },
-    { BLOCKSPATH"/battery",     10 },
-    { BLOCKSPATH"/temperature", 10 },
-    { BLOCKSPATH"/datetime",    60 }
-};
-
-static char delimiter = '|';
-static int withSpace = 1;
-static const char fifo[] = "/tmp/dwmbar.fifo";
+#include "config.h"
 
 #define BLOCKVARLEN 13
 #define CMDMAXLEN 256
