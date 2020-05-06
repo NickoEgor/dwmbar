@@ -6,7 +6,7 @@ static const Block blocks[] = {
     { BLOCKSPATH"/torrent",     15 },
     { BLOCKSPATH"/volume",      5  },
     { BLOCKSPATH"/brightness",  10 },
-    { "xkb-switch",             10 },
+    { BLOCKSPATH"/keyboard",    10 },
     { BLOCKSPATH"/internet",    5  },
     { BLOCKSPATH"/battery",     10 },
     { BLOCKSPATH"/temperature", 10 },
