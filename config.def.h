@@ -17,7 +17,7 @@ static const Block blocks[] = {
 static char delimiter = '|';
 
 /* should there be spaces around delimiter [0/1] */
-static int withSpace = 1;
+static int withSpaces = 1;
 
 /* path to dwmbar fifo */
 static const char fifo[] = "/tmp/dwmbar.fifo";
