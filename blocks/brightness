@@ -1,6 +1,13 @@
 #!/bin/sh
 
 case $BLOCK_BUTTON in
+    1)
+        if [ $(xbacklight -get) -eq 1 ]; then
+            [ -f "/tmp/save_backlight" ] && xbacklight -set $(cat /tmp/save_backlight)
+        else
+            xbacklight -get > /tmp/save_backlight
+            xbacklight -set 1
+        fi ;;
 	4) xbacklight -dec 5 >/dev/null ;;
 	5) xbacklight -inc 5 >/dev/null ;;
 esac

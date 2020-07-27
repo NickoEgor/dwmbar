@@ -1,5 +1,7 @@
 #!/bin/sh
 
+format="🎹 <song> <stat>"
+
 case $BLOCK_BUTTON in
     1) mpc toggle >/dev/null 2>&1 ;;
     3) setsid $TERMINAL -e ncmpcpp >/dev/null 2>&1 & ;;
@@ -8,13 +10,13 @@ case $BLOCK_BUTTON in
 esac
 
 if [ $(mpc status | wc -l) -lt 3 ]; then
-    echo "[⏹] MPD stopped" && exit
+    echo "$format" | sed -n "s/<song>/MPD stopped/g ; s/<stat>/⏹/gp" && exit
 else
     stat="$(mpc status | sed -n '2s/\[\(.*\)\].*/\1/p')"
     case $stat in
-        playing) stat='[⏸]' ;;
-        paused) stat='[▶]' ;;
-        *) stat='[❓]' ;;
+        playing) stat='⏸' ;;
+        paused) stat='▶' ;;
+        *) stat='❓' ;;
     esac
 fi
 
@@ -33,6 +35,6 @@ else
     song="${file%.*}"
 fi
 
-[ "${#song}" -gt 50 ] && song="${song:0:47}..."
+[ "${#song}" -gt 40 ] && song="${song:0:37}..."
 
-echo "$stat $song"
+echo "$format" | sed -n "s%<song>%${song//&/\\&}%g ; s/<stat>/${stat//&\\&}/gp" && exit
