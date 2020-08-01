@@ -1,0 +1,14 @@
+#!/bin/dash
+
+case $BLOCK_BUTTON in
+	1) pulsemixer --toggle-mute ;;
+	3) setsid $TERMINAL -e pulsemixer & ;;
+	4) pulsemixer --change-volume -3 ;;
+	5) pulsemixer --change-volume +3 ;;
+esac
+
+level=$(pulsemixer --get-volume | cut -d' ' -f1)
+status=$(pulsemixer --get-mute)
+
+[ $status -eq 0 ] && echo "🔊 $level%" && exit
+echo "🔇 $level%" && exit

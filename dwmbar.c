@@ -1,20 +1,23 @@
 #define _POSIX_C_SOURCE 200809L
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <signal.h>
-#include <errno.h>
 #include <X11/Xlib.h>
+#include <errno.h>
+#include <ctype.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define LEN(X) (sizeof(X) / sizeof(X[0]))
 
 typedef struct {
-    char* command;
+    char *name;
+    char *command;
     unsigned int interval;
 } Block;
 
@@ -34,9 +37,9 @@ static int restart = 0;
 
 static char oldStatusStr[BARMAXLEN];
 static char newStatusStr[BARMAXLEN];
-static char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
 static char cmd[BLOCKVARLEN + CMDMAXLEN];
 static char cache[LEN(blocks)][BLOCKMAXLEN] = {0};
+static const char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
 
 static int fifoFd;
 
@@ -44,9 +47,7 @@ pthread_t updaterThreadID;
 
 void setRoot(char *status) {
     Display *d = XOpenDisplay(NULL);
-    if (d) {
-        dpy = d;
-    }
+    if (d) dpy = d;
     screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
     XStoreName(dpy, root, status);
@@ -56,12 +57,15 @@ void setRoot(char *status) {
 void updateStatus() {
     /* position where to start writing */
     int k = 0;
+
+    int delimWidth = withSpaces ? 4 : 2;
     /* leave space for last \0 */
     for (size_t i = 0; i < LEN(blocks) && k < BARMAXLEN - 1; ++i) {
-        /* skip first block */
-        if (i && k + 3 < BARMAXLEN - 1) {
+        /* check i > 0 to skip first block */
+        if (i && k + delimWidth < BARMAXLEN - 1) {
             if (withSpaces) newStatusStr[k++] = ' ';
             newStatusStr[k++] = delimiter;
+            newStatusStr[k++] = '\n';
             if (withSpaces) newStatusStr[k++] = ' ';
         }
 
@@ -88,20 +92,24 @@ void updateStatus() {
 }
 
 void removeAll(char *str, char to_remove) {
-	char *read = str;
-	char *write = str;
-	while (*read) {
-		if (*read == to_remove) {
-			read++;
-			*write = *read;
-		}
-		read++;
-		write++;
-	}
+    char *read = str;
+    char *write = str;
+    while (*read) {
+        if (*read == to_remove) {
+            read++;
+            *write = *read;
+        }
+        read++;
+        write++;
+    }
 }
 
 /* Opens process *cmd and stores output in *output */
 void getCommand(const Block *block, char *output, int button) {
+    /* Ignore cached value */
+    /* output[0] = '\0'; */
+    strcpy(output, "❌");
+
     FILE *cmdf;
     if (button) {
         sprintf(cmd, "%s=%d %s", buttonVarName, button, block->command);
@@ -111,29 +119,35 @@ void getCommand(const Block *block, char *output, int button) {
         strcpy(cmd, block->command);
         cmdf = popen(cmd, "r");
     }
-    if (!cmdf)
-        return;
+    if (!cmdf) return;
 
-    int i = 0;
-    fgets(output+i, BLOCKMAXLEN-i, cmdf);
+    fgets(output, BLOCKMAXLEN, cmdf);
     removeAll(output, '\n');
-    i = strlen(output);
+    int i = strlen(output);
     output[i] = '\0';
 
     pclose(cmdf);
 }
 
-void *periodUpdater(void *vargp) {
-    (void)vargp; // suppress warn
+size_t getBlockIndex(const char *name) {
+    for (size_t i = 0; i < LEN(blocks); i++) {
+        if (strcmp(blocks[i].name, name) == 0)
+            return i;
+    }
 
-    const Block* current;
+    return -1;
+}
+
+void *periodUpdater(void *vargp) {
+    (void)vargp;  // suppress warn
+
+    const Block *current;
     unsigned int time = 0;
 
     while (running) {
-        for(size_t i = 0; i < LEN(blocks); i++) {
+        for (size_t i = 0; i < LEN(blocks); i++) {
             current = blocks + i;
-            if (time % current->interval == 0)
-                getCommand(current, cache[i], 0);
+            if (time % current->interval == 0) getCommand(current, cache[i], 0);
         }
         updateStatus();
         sleep(1);
@@ -144,10 +158,10 @@ void *periodUpdater(void *vargp) {
 }
 
 void signalHandler(int signum) {
-    (void)signum; // suppress warn
+    (void)signum;  // suppress warn
 
     fprintf(stderr, "Stopping...\n");
-	running = 0;
+    running = 0;
 }
 
 void restartHandler(int signum) {
@@ -155,7 +169,14 @@ void restartHandler(int signum) {
     signalHandler(signum);
 }
 
-int main(int argc, char** argv) {
+int isnumber(const char *str) {
+    for (size_t i = 0; i < strlen(str); ++i)
+        if (!isdigit(str[i]))
+            return 0;
+    return 1;
+}
+
+int main(int argc, char **argv) {
     (void)argc;
     fprintf(stderr, "Starting bar...\n");
 
@@ -193,6 +214,7 @@ int main(int argc, char** argv) {
     sigprocmask(SIG_BLOCK, &sigset, &oldset);
 
     char buffer[256];
+    char id[256];
     int block;
     unsigned int button;
 
@@ -210,22 +232,33 @@ int main(int argc, char** argv) {
         FD_ZERO(&readfds);
         FD_SET(fifoFd, &readfds);
 
-        int ready = pselect(fifoFd+1, &readfds, NULL, NULL, NULL, &oldset);
+        int ready = pselect(fifoFd + 1, &readfds, NULL, NULL, NULL, &oldset);
         if (ready >= 0) {
             if (read(fifoFd, buffer, LEN(buffer) - 1) < 0) {
                 perror("read");
                 continue;
             }
 
-            if (close(fifoFd) < 0)
-                perror("close");
+            if (close(fifoFd) < 0) perror("close");
 
-            if (sscanf(buffer, "%d %u\n", &block, &button) < 0) {
+
+            if (sscanf(buffer, "%s %u\n", id, &button) < 0) {
                 perror("sscanf");
                 continue;
             }
 
-            getCommand(&blocks[block-1], cache[block-1], button);
+            if (isnumber(id)) {
+                block = atoi(id);
+                /* input block starts with 1, not 0 */
+                block--;
+            } else {
+                block = getBlockIndex(id);
+                if (block == -1) {
+                    perror("invalid block name");
+                    continue;
+                }
+            }
+            getCommand(&blocks[block], cache[block], button);
             updateStatus();
         } else {
             perror("Signal");

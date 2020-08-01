@@ -1,9 +1,0 @@
-player      $BLOCKS/player
-torrent     $BLOCKS/torrent
-volume      $BLOCKS/volume
-bright      $BLOCKS/brightness
-internet    $BLOCKS/internet
-battery     $BLOCKS/battery
-temperature $BLOCKS/temperature
-keyboard    $BLOCKS/keyboard
-datetime    $BLOCKS/datetime
