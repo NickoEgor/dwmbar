@@ -44,6 +44,8 @@ static const char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
 static int fifoFd;
 
 pthread_t updaterThreadID;
+pthread_mutex_t updateLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t getLock = PTHREAD_MUTEX_INITIALIZER;
 
 void setRoot(char *status) {
     Display *d = XOpenDisplay(NULL);
@@ -55,9 +57,10 @@ void setRoot(char *status) {
 }
 
 void updateStatus() {
+    pthread_mutex_lock(&updateLock);
+
     /* position where to start writing */
     int k = 0;
-
     int delimWidth = withSpaces ? 4 : 2;
     /* leave space for last \0 */
     for (size_t i = 0; i < LEN(blocks) && k < BARMAXLEN - 1; ++i) {
@@ -77,6 +80,7 @@ void updateStatus() {
     if (!strcmp(newStatusStr, oldStatusStr)) {
         /* clear new status */
         memset(newStatusStr, 0, strlen(oldStatusStr));
+        pthread_mutex_unlock(&updateLock);
         return;
     }
 
@@ -89,6 +93,8 @@ void updateStatus() {
 
     /* clear new status */
     memset(newStatusStr, 0, strlen(oldStatusStr));
+
+    pthread_mutex_unlock(&updateLock);
 }
 
 void removeAll(char *str, char to_remove) {
@@ -106,9 +112,9 @@ void removeAll(char *str, char to_remove) {
 
 /* Opens process *cmd and stores output in *output */
 void getCommand(const Block *block, char *output, int button) {
-    /* Ignore cached value */
-    /* output[0] = '\0'; */
-    strcpy(output, "❌");
+    pthread_mutex_lock(&getLock);
+
+    strcpy(output, "...");
 
     FILE *cmdf;
     if (button) {
@@ -127,6 +133,8 @@ void getCommand(const Block *block, char *output, int button) {
     output[i] = '\0';
 
     pclose(cmdf);
+
+    pthread_mutex_unlock(&getLock);
 }
 
 size_t getBlockIndex(const char *name) {
@@ -266,6 +274,8 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr, "Cleaning up...\n");
+    pthread_mutex_destroy(&getLock);
+    pthread_mutex_destroy(&updateLock);
     pthread_join(updaterThreadID, NULL);
 
     if (restart) {
