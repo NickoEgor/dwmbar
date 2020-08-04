@@ -1,4 +1,5 @@
-#!/bin/dash
+#!/usr/bin/env bash
+# vim: ft=sh
 
 case $BLOCK_BUTTON in
 	1) pulsemixer --toggle-mute ;;
@@ -7,8 +8,8 @@ case $BLOCK_BUTTON in
 	5) pulsemixer --change-volume +3 ;;
 esac
 
-level=$(pulsemixer --get-volume | cut -d' ' -f1)
-status=$(pulsemixer --get-mute)
+read -d=$'\n' status level \
+    <<< $(pulsemixer --get-mute --get-volume | cut -d' ' -f1)
 
 [ $status -eq 0 ] && echo "🔊 $level%" && exit
 echo "🔇 $level%" && exit

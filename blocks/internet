@@ -1,19 +1,20 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-# Show wifi 📶 and percent strength or 📡 if none.
-# Show 🌐 if connected to ethernet or ❎ if none.
+# Show wifi 📡 and percent strength or ❎ if none.
+# Show 📶 if connected to ethernet or ❎ if none.
 
 case $BLOCK_BUTTON in
 	3) setsid "$TERMINAL" -e nmtui & ;;
 	1) notify-send "🌐 Internet module" "\- Click to connect
 ❎: no wifi connection
-📶: wifi connection with quality
+📡: wifi connection with quality
 ❎: no ethernet
-🌐: ethernet working
+📶: ethernet working
+❓: unknown ethernet status
 " ;;
 esac
 
 grep -q "down" /sys/class/net/w*/operstate && wifiicon="❎" ||
-	wifiicon="$(grep "^\s*w" /proc/net/wireless | awk '{ print "📶", int($3 * 100 / 70) "%" }')"
+	wifiicon="$(grep "^\s*w" /proc/net/wireless | awk '{ print "📡", int($3 * 100 / 70) "%" }')"
 
-printf "%s %s\n" "$wifiicon" "$(sed "s/down/❎/;s/up/🌐/" /sys/class/net/e*/operstate)"
+printf "%s %s\n" "$wifiicon" "$(sed "s/down/❎/;s/up/📶/;s/unknown/❓/" /sys/class/net/e*/operstate)"

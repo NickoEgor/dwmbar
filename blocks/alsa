@@ -1,18 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 case $BLOCK_BUTTON in
 	1) amixer set Master toggle >/dev/null ;;
 	3) $TERMINAL -e alsamixer & disown ;;
-	4) amixer set Master 5- >/dev/null ;;
-	5) amixer set Master 5+ >/dev/null ;;
+	4) amixer set Master 5%- >/dev/null ;;
+	5) amixer set Master 5%+ >/dev/null ;;
 esac
 
 read level stat < <(amixer get Master | \
     tail -n1 | \
     tr -d "[]%" | \
     sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | \
-    # cut -d ' ' -f4,6)
-    cut -d ' ' -f5,6) # when pulse
+    cut -d ' ' -f4,6)
 
 [[ $stat = "on" ]] && echo "🔊 $level%" && exit
 echo "🔇 $level%" && exit

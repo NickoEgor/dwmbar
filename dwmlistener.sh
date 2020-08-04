@@ -9,13 +9,11 @@ listenACPI() {
     acpi_listen | while read -r line ; do
         sleep 0.1
         case "$line" in
-            button/mute*)           sendSignal "volume" ;;
-            button/volumeup*)       sendSignal "volume" ;;
-            button/volumedown*)     sendSignal "volume" ;;
-            video/brightnessup*)    sendSignal "bright" ;;
-            video/brightnessdown*)  sendSignal "bright" ;;
-            ac_adapter*)            sendSignal "battery" ;;
-            battery*)               sendSignal "battery" ;;
+            button/mute*)      sendSignal "volume" ;;
+            button/volume*)    sendSignal "volume" ;;
+            video/brightness*) sendSignal "bright" ;;
+            ac_adapter*)       sendSignal "battery" ;;
+            battery*)          sendSignal "battery" ;;
         esac
     done
 }

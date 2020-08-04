@@ -1,4 +1,5 @@
-#!/bin/dash
+#!/usr/bin/env dash
+# vim: ft=sh
 
 case $BLOCK_BUTTON in
     1)

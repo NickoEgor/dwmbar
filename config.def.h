@@ -1,16 +1,17 @@
 /* setup your blocks here */
-#define PATH "~/.config/dwmbar/blocks"
 static const Block blocks[] = {
-    /* name */  /* command */           /* interval */
-    { "player",      PATH"/player",      10 },
-    { "torrent",     PATH"/torrent",     15 },
-    { "volume",      PATH"/pulse",       5  },
-    { "bright",      PATH"/brightness",  10 },
-    { "internet",    PATH"/internet",    5  },
-    { "battery",     PATH"/battery",     10 },
-    { "temperature", PATH"/temperature", 10 },
-    { "keyboard",    PATH"/keyboard",    10 },
-    { "datetime",    PATH"/datetime",    60 }
+    /* name */       /* command */  /* interval */
+    { "player",      BLOCKS"player",      10 },
+    { "torrent",     BLOCKS"torrent",     15 },
+    { "volume",      BLOCKS"pulse",       5  },
+    { "bright",      BLOCKS"brightness",  10 },
+    { "internet",    BLOCKS"internet",    5  },
+    { "memory",      BLOCKS"memory",      5  },
+    { "cpu",         BLOCKS"cpu_bars",    1  },
+    { "battery",     BLOCKS"battery",     10 },
+    { "temperature", BLOCKS"temperature", 10 },
+    { "keyboard",    BLOCKS"keyboard",    10 },
+    { "datetime",    BLOCKS"datetime",    60 },
 };
 
 /* drawable delimiter for blocks
