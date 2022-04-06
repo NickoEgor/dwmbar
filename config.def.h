@@ -1,3 +1,6 @@
+/* blocks path */
+#define BLOCKS "~/.local/share/dwmbar/blocks"
+
 /* setup your blocks here */
 static const Block blocks[] = {
     /* name */       /* command */  /* interval */

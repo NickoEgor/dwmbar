@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# vim: ft=sh
 
 case $BLOCK_BUTTON in
-	1) pulsemixer --toggle-mute ;;
-	3) setsid $TERMINAL -e pulsemixer & ;;
-	4) pulsemixer --change-volume -3 ;;
-	5) pulsemixer --change-volume +3 ;;
+    1) pamixer --toggle-mute ;;
+    3) setsid "$TERMINAL" -e pulsemixer & disown ;;
+    4) pamixer --decrease 3 ;;
+    5) pamixer --increase 3 ;;
 esac
 
-read -d=$'\n' status level \
-    <<< $(pulsemixer --get-mute --get-volume | cut -d' ' -f1)
-
-[ $status -eq 0 ] && echo "🔊 $level%" && exit
-echo "🔇 $level%" && exit
+read -r mute level <<< "$(pamixer --get-mute --get-volume)"
+[ "$mute" = "false" ] && echo "🔊 $level" || echo "🔇 $level"
