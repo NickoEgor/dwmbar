@@ -1,7 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xlib.h>
-#include <errno.h>
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <wordexp.h>
 
 #define LEN(X) (sizeof(X) / sizeof(X[0]))
 
@@ -23,10 +24,11 @@ typedef struct {
 
 #include "config.h"
 
-#define BLOCKVARLEN 13
-#define CMDMAXLEN 256
-#define BLOCKMAXLEN 128
 #define BARMAXLEN 512
+#define BLOCKMAXLEN 128
+#define BLOCKSPATHMAXLEN 450
+#define BLOCKVARLEN 13
+#define CMDMAXLEN 512
 
 static Display *dpy;
 static int screen;
@@ -37,8 +39,9 @@ static int restart = 0;
 
 static char oldStatusStr[BARMAXLEN];
 static char newStatusStr[BARMAXLEN];
-static char cmd[BLOCKVARLEN + CMDMAXLEN];
-static char cache[LEN(blocks)][BLOCKMAXLEN] = {0};
+static char cmd[CMDMAXLEN];
+static char cache[LEN(blocks)][BLOCKMAXLEN];
+static char blocks_path[BLOCKSPATHMAXLEN];
 static const char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
 
 static int fifoFd;
@@ -118,11 +121,11 @@ void getCommand(const Block *block, char *output, int button) {
 
     FILE *cmdf;
     if (button) {
-        sprintf(cmd, "%s=%d %s", buttonVarName, button, block->command);
+        sprintf(cmd, "%s=%d %s/%s", buttonVarName, button, blocks_path, block->command);
         button = 0;
         cmdf = popen(cmd, "r");
     } else {
-        strcpy(cmd, block->command);
+        sprintf(cmd, "%s/%s", blocks_path, block->command);
         cmdf = popen(cmd, "r");
     }
     if (!cmdf) return;
@@ -184,6 +187,12 @@ int isnumber(const char *str) {
     return 1;
 }
 
+void expandBlockCommands() {
+    wordexp_t exp_result;
+    wordexp(BLOCKS, &exp_result, 0);
+    strcpy(blocks_path, exp_result.we_wordv[0]);
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     fprintf(stderr, "Starting bar...\n");
@@ -220,6 +229,8 @@ int main(int argc, char **argv) {
     sigaddset(&sigset, SIGHUP);
     sigaddset(&sigset, SIGUSR1);
     sigprocmask(SIG_BLOCK, &sigset, &oldset);
+
+    expandBlockCommands();
 
     char buffer[256];
     char id[256];

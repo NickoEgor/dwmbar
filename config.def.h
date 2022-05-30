@@ -4,17 +4,17 @@
 /* setup your blocks here */
 static const Block blocks[] = {
     /* name */       /* command */  /* interval */
-    { "player",      BLOCKS"player",      10 },
-    { "torrent",     BLOCKS"torrent",     15 },
-    { "volume",      BLOCKS"pulse",       5  },
-    { "bright",      BLOCKS"brightness",  10 },
-    { "internet",    BLOCKS"internet",    5  },
-    { "memory",      BLOCKS"memory",      5  },
-    { "cpu",         BLOCKS"cpu_bars",    1  },
-    { "battery",     BLOCKS"battery",     10 },
-    { "temperature", BLOCKS"temperature", 10 },
-    { "keyboard",    BLOCKS"keyboard",    10 },
-    { "datetime",    BLOCKS"datetime",    60 },
+    { "player",      "player",      10 },
+    { "torrent",     "torrent",     15 },
+    { "volume",      "pulse",       5  },
+    { "bright",      "brightness",  10 },
+    { "internet",    "internet",    5  },
+    { "memory",      "memory",      5  },
+    { "cpu",         "cpu_bars",    1  },
+    { "battery",     "battery",     10 },
+    { "temperature", "temperature", 10 },
+    { "keyboard",    "keyboard",    10 },
+    { "datetime",    "datetime",    60 },
 };
 
 /* drawable delimiter for blocks
