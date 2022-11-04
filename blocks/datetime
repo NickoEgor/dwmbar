@@ -4,4 +4,4 @@ case $BLOCK_BUTTON in
     1) $TERMINAL -c dropdown -e showcalendar ;;
 esac
 
-echo "📅 $(date '+%a %d/%m/%Y %R')"
+echo "📅 $(date '+%R %d/%m/%Y %a')"

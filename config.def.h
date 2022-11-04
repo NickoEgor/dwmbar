@@ -4,7 +4,7 @@
 /* setup your blocks here */
 static const Block blocks[] = {
     /* name */       /* command */  /* interval */
-    { "player",      "player",      10 },
+    { "player",      "mpd",         10 },
     { "torrent",     "torrent",     15 },
     { "volume",      "pulse",       5  },
     { "bright",      "brightness",  10 },

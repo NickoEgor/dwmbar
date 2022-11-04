@@ -23,5 +23,5 @@ case $BLOCK_BUTTON in
 🔽: downloading
 ✅: done
 🌱: done and seeding" ;;
-    3) setsid $TERMINAL -e transmission-remote-cli & ;;
+    3) setsid "$TERMINAL" -e tremc & ;;
 esac

@@ -5,7 +5,7 @@ name_length=60
 
 case $BLOCK_BUTTON in
     1) mpc toggle >/dev/null 2>&1 ;;
-    3) setsid $TERMINAL -e ncmpcpp >/dev/null 2>&1 & ;;
+    3) setsid "$TERMINAL" -e ncmpcpp >/dev/null 2>&1 & ;;
     4) mpc prev >/dev/null 2>&1 ;;
     5) mpc next >/dev/null 2>&1 ;;
 esac
@@ -24,8 +24,8 @@ fi
 artist="$(mpc status -f "%artist%" | cut -d $'\n' -f1)"
 title="$(mpc status -f "%title%" | cut -d $'\n' -f1)"
 
-if [ ! -z "$title" ]; then
-    if [ ! -z "$artist" ]; then
+if [ -n "$title" ]; then
+    if [ -n "$artist" ]; then
         song="$artist — $title"
     else
         song="$title"
@@ -36,7 +36,7 @@ else
     song="${file%.*}"
 fi
 
-[ "${#song}" -gt $name_length ] && song="${song:0:$(($name_length - 3))}..."
+[ "${#song}" -gt $name_length ] && song="${song:0:$((name_length - 3))}..."
 
 # echo "$format" | sed -n "s%<song>%${song//&/\\&}%g ; s/<stat>/${stat//&\\&}/gp" && exit
 song="$(echo "$song" | sed 's/&/\\\\&/g ; s/"/\\"/g')"
