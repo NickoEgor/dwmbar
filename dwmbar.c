@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define __STDC_WANT_LIB_EXT1__ 1
 #include <X11/Xlib.h>
 #include <ctype.h>
 #include <errno.h>
@@ -24,27 +25,29 @@ typedef struct {
 
 #include "config.h"
 
-#define BARMAXLEN 512
-#define BLOCKMAXLEN 128
-#define BLOCKSPATHMAXLEN 450
-#define BLOCKVARLEN 13
-#define CMDMAXLEN 512
-
 static Display *dpy;
 static int screen;
 static Window root;
 
-static int running = 1;
-static int restart = 0;
+static int isRunning = 1;
+static int isRestart = 0;
 
-static char oldStatusStr[BARMAXLEN];
-static char newStatusStr[BARMAXLEN];
-static char cmd[CMDMAXLEN];
-static char cache[LEN(blocks)][BLOCKMAXLEN];
-static char blocks_path[BLOCKSPATHMAXLEN];
-static const char buttonVarName[BLOCKVARLEN] = "BLOCK_BUTTON";
+#define BAR_MAX_LEN 512
+static char oldStatusStr[BAR_MAX_LEN + 1];
+static char newStatusStr[BAR_MAX_LEN + 1];
 
-static int fifoFd;
+#define CMDMAXLEN 512
+static char cmd[CMDMAXLEN + 1];
+
+#define BLOCK_MAX_LEN 128
+static char cache[LEN(blocks)][BLOCK_MAX_LEN + 1];
+
+#define BLOCKS_PATH_MAX_LEN 450
+static char blocks_path[BLOCKS_PATH_MAX_LEN + 1];
+
+#define FIFO_BUFFER 255
+
+#define EMPTY_OUTPUT "..."
 
 pthread_t updaterThreadID;
 pthread_mutex_t updateLock = PTHREAD_MUTEX_INITIALIZER;
@@ -59,6 +62,50 @@ void setRoot(char *status) {
     XCloseDisplay(dpy);
 }
 
+void resetBuffer(char *buf, size_t size) {
+#ifdef __STDC_LIB_EXT1__
+    memset_s(buf, size, 0, size);
+#else
+    memset(buf, 0, size);
+#endif
+}
+
+void appendBuffer(char *src, const char *dst, size_t size) {
+#ifdef __STDC_LIB_EXT1__
+    strncat_s(src, size, dst, size);
+#else
+    strncat(src, dst, size);
+#endif
+}
+
+void copyBuffer(char *dst, const char *src, size_t size) {
+#ifdef __STDC_LIB_EXT1__
+    strncpy_s(dst, size, src, size);
+#else
+    strncpy(dst, src, size);
+#endif
+}
+
+size_t removeFromBuffer(char *buf, char toRemove) {
+    size_t newSize = 0;
+    char *read = buf;
+    char *write = buf;
+
+    while (*read) {
+        /* skip all char for removal */
+        while (*read == toRemove) {
+            read++;
+        }
+        /* set next valid char instead of 'toRemove' */
+        if (*write != *read) *write = *read;
+
+        read++;
+        write++;
+        newSize++;
+    }
+    return newSize;
+}
+
 void updateStatus() {
     pthread_mutex_lock(&updateLock);
 
@@ -66,74 +113,60 @@ void updateStatus() {
     int k = 0;
     int delimWidth = withSpaces ? 4 : 2;
     /* leave space for last \0 */
-    for (size_t i = 0; i < LEN(blocks) && k < BARMAXLEN - 1; ++i) {
+    for (size_t i = 0; i < LEN(blocks) && k < BAR_MAX_LEN - 1; ++i) {
         /* check i > 0 to skip first block */
-        if (i && k + delimWidth < BARMAXLEN - 1) {
+        if (i && k + delimWidth < BAR_MAX_LEN - 1) {
             if (withSpaces) newStatusStr[k++] = ' ';
             newStatusStr[k++] = delimiter;
             newStatusStr[k++] = '\n';
             if (withSpaces) newStatusStr[k++] = ' ';
         }
 
-        strncat(newStatusStr + k, cache[i], BARMAXLEN - k - 1);
+        appendBuffer(newStatusStr + k, cache[i], BAR_MAX_LEN - k - 1);
         k = strlen(newStatusStr);
     }
 
     /* if new status equals to old then do not update*/
     if (!strcmp(newStatusStr, oldStatusStr)) {
         /* clear new status */
-        memset(newStatusStr, 0, strlen(oldStatusStr));
+        resetBuffer(newStatusStr, BAR_MAX_LEN);
         pthread_mutex_unlock(&updateLock);
         return;
     }
 
     /* clear and reset old status */
-    memset(oldStatusStr, 0, strlen(oldStatusStr));
-    strcpy(oldStatusStr, newStatusStr);
+    resetBuffer(oldStatusStr, BAR_MAX_LEN);
+    copyBuffer(oldStatusStr, newStatusStr, BAR_MAX_LEN);
 
     /* update status */
     setRoot(newStatusStr);
 
     /* clear new status */
-    memset(newStatusStr, 0, strlen(oldStatusStr));
+    resetBuffer(newStatusStr, BAR_MAX_LEN);
 
     pthread_mutex_unlock(&updateLock);
-}
-
-void removeAll(char *str, char to_remove) {
-    char *read = str;
-    char *write = str;
-    while (*read) {
-        if (*read == to_remove) {
-            read++;
-            *write = *read;
-        }
-        read++;
-        write++;
-    }
 }
 
 /* Opens process *cmd and stores output in *output */
 void getCommand(const Block *block, char *output, int button) {
     pthread_mutex_lock(&getLock);
 
-    strcpy(output, "...");
+    resetBuffer(output, BLOCK_MAX_LEN);
+    copyBuffer(output, EMPTY_OUTPUT, sizeof(EMPTY_OUTPUT));
 
     FILE *cmdf;
     if (button) {
-        sprintf(cmd, "%s=%d %s/%s", buttonVarName, button, blocks_path, block->command);
+        sprintf(cmd, "BLOCK_BUTTON=%d %s/%s", button, blocks_path, block->command);
         button = 0;
-        cmdf = popen(cmd, "r");
     } else {
         sprintf(cmd, "%s/%s", blocks_path, block->command);
-        cmdf = popen(cmd, "r");
     }
+    cmdf = popen(cmd, "r");
     if (!cmdf) return;
 
-    fgets(output, BLOCKMAXLEN, cmdf);
-    removeAll(output, '\n');
-    int i = strlen(output);
-    output[i] = '\0';
+    fgets(output, BLOCK_MAX_LEN, cmdf);
+    int newSize = removeFromBuffer(output, '\n');
+    output[newSize] = '\0';
 
     pclose(cmdf);
 
@@ -142,20 +175,20 @@ void getCommand(const Block *block, char *output, int button) {
 
 size_t getBlockIndex(const char *name) {
     for (size_t i = 0; i < LEN(blocks); i++) {
-        if (strcmp(blocks[i].name, name) == 0)
-            return i;
+        if (strcmp(blocks[i].name, name) == 0) return i;
     }
 
     return -1;
 }
 
-void *periodUpdater(void *vargp) {
-    (void)vargp;  // suppress warn
+void *periodicUpdater(void *vargp) {
+    /* suppress warn */
+    (void)vargp;
 
     const Block *current;
     unsigned int time = 0;
 
-    while (running) {
+    while (isRunning) {
         for (size_t i = 0; i < LEN(blocks); i++) {
             current = blocks + i;
             if (time % current->interval == 0) getCommand(current, cache[i], 0);
@@ -169,45 +202,72 @@ void *periodUpdater(void *vargp) {
 }
 
 void signalHandler(int signum) {
-    (void)signum;  // suppress warn
+    /* suppress warn */
+    (void)signum;
 
     fprintf(stderr, "Stopping...\n");
-    running = 0;
+    isRunning = 0;
 }
 
 void restartHandler(int signum) {
-    restart = 1;
+    isRestart = 1;
     signalHandler(signum);
 }
 
 int isnumber(const char *str) {
     for (size_t i = 0; i < strlen(str); ++i)
-        if (!isdigit(str[i]))
-            return 0;
+        if (!isdigit(str[i])) return 0;
     return 1;
 }
 
 void expandBlockCommands() {
     wordexp_t exp_result;
     wordexp(BLOCKS, &exp_result, 0);
-    strcpy(blocks_path, exp_result.we_wordv[0]);
+    copyBuffer(blocks_path, exp_result.we_wordv[0], BLOCKS_PATH_MAX_LEN);
+}
+
+int openFifo() {
+    /* create fifo if it doesn't exist */
+    if (mkfifo(fifoPath, 0622) < 0 && errno != EEXIST) {
+        perror("mkfifo() failed");
+        return -1;
+    }
+
+    /* open fifo */
+    int fifoFd;
+    if ((fifoFd = open(fifoPath, O_RDONLY | O_RSYNC | O_NONBLOCK)) < 0) {
+        perror("open() failed");
+        return -1;
+    }
+
+    /* read fifo stats */
+    struct stat fifoStat;
+    if (fstat(fifoFd, &fifoStat) < 0) {
+        perror("fstat() failed");
+        return -1;
+    }
+
+    /* check that file is fifo */
+    if (!S_ISFIFO(fifoStat.st_mode)) {
+        fprintf(stderr, "File is not FIFO: %s\n", fifoPath);
+        return -1;
+    }
+
+    return fifoFd;
 }
 
 int main(int argc, char **argv) {
     (void)argc;
+
     fprintf(stderr, "Starting bar...\n");
 
-    if (mkfifo(fifo, 0622) < 0 && errno != EEXIST) {
-        perror("mkfifo");
+    /* set periodical updates */
+    if (pthread_create(&updaterThreadID, NULL, &periodicUpdater, NULL)) {
+        perror("pthread_create() failed");
         return 1;
     }
 
-    if (pthread_create(&updaterThreadID, NULL, &periodUpdater, NULL)) {
-        perror("pthread_create");
-        return 1;
-    }
-
-    // Install the signal handler for SIGINT, SIGHUP
+    /* install signal handler for SIGINT, SIGHUP */
     struct sigaction sa;
     sa.sa_handler = signalHandler;
     sa.sa_flags = 0;
@@ -215,14 +275,14 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
 
-    // Install SIGUSR1 for restarting
+    /* install SIGUSR1 for restarting */
     struct sigaction rsa;
     rsa.sa_handler = restartHandler;
     rsa.sa_flags = 0;
     sigemptyset(&rsa.sa_mask);
     sigaction(SIGUSR1, &rsa, NULL);
 
-    // Block signals
+    /* block signals */
     sigset_t sigset, oldset;
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGINT);
@@ -232,55 +292,78 @@ int main(int argc, char **argv) {
 
     expandBlockCommands();
 
-    char buffer[256];
-    char id[256];
-    int block;
-    unsigned int button;
+    char fifoBuffer[FIFO_BUFFER + 1] = {0};
+    char blockNameBuffer[FIFO_BUFFER + 1] = {0};
 
-    while (running) {
-        block = 0;
-        button = 0;
-        memset(buffer, 0, strlen(buffer));
+    fd_set readFds;
+    fd_set errorFds;
 
-        if ((fifoFd = open(fifo, O_RDONLY | O_RSYNC | O_NONBLOCK)) < 0) {
-            perror("open");
-            continue;
-        }
+    while (isRunning) {
+        fprintf(stderr, "Opening fifo: %s\n", fifoPath);
+        int fifoFd = openFifo();
+        if (fifoFd == -1) return 1;
 
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(fifoFd, &readfds);
+        while (1) {
+            unsigned int button = 0;
+            resetBuffer(fifoBuffer, FIFO_BUFFER);
+            resetBuffer(blockNameBuffer, FIFO_BUFFER);
 
-        int ready = pselect(fifoFd + 1, &readfds, NULL, NULL, NULL, &oldset);
-        if (ready >= 0) {
-            if (read(fifoFd, buffer, LEN(buffer) - 1) < 0) {
-                perror("read");
+            FD_ZERO(&readFds);
+            FD_ZERO(&errorFds);
+            FD_SET(fifoFd, &readFds);
+
+            if (pselect(fifoFd + 1, &readFds, NULL, &errorFds, NULL, &oldset) < 0) {
+                perror("pselect() caught signal");
+                isRunning = 0;
+                break;
+            }
+
+            if (FD_ISSET(fifoFd, &errorFds)) {
+                fprintf(stderr, "FIFO fd error\n");
                 continue;
             }
 
-            if (close(fifoFd) < 0) perror("close");
-
-
-            if (sscanf(buffer, "%s %u\n", id, &button) < 0) {
-                perror("sscanf");
+            if (!FD_ISSET(fifoFd, &readFds)) {
+                fprintf(stderr, "FIFO fd not in read fdset\n");
                 continue;
             }
 
-            if (isnumber(id)) {
-                block = atoi(id);
-                /* input block starts with 1, not 0 */
+            int nread = read(fifoFd, fifoBuffer, FIFO_BUFFER);
+            if (nread < 0) {
+                perror("read() failed");
+                continue;
+            } else if (nread == 0) {
+                /* EOF */
+                break;
+            }
+
+            if (sscanf(fifoBuffer, "%s %u\n", blockNameBuffer, &button) < 0) {
+                perror("sscanf() failed");
+                continue;
+            }
+
+            int block = 0;
+            if (isnumber(blockNameBuffer)) {
+                /* used for direct clicks on bar */
+                block = atoi(blockNameBuffer);
+                /* input block starts with 1, not 0, so we decrease it */
                 block--;
             } else {
-                block = getBlockIndex(id);
+                /* used for updates coming from pipe */
+                block = getBlockIndex(blockNameBuffer);
                 if (block == -1) {
-                    perror("invalid block name");
+                    fprintf(stderr, "Invalid block name: %s\n", blockNameBuffer);
                     continue;
                 }
             }
             getCommand(&blocks[block], cache[block], button);
             updateStatus();
-        } else {
-            perror("Signal");
+        }
+
+        fprintf(stderr, "Closing fifo...\n");
+        if (close(fifoFd) < 0) {
+            perror("close() failed");
+            break;
         }
     }
 
@@ -289,7 +372,7 @@ int main(int argc, char **argv) {
     pthread_mutex_destroy(&updateLock);
     pthread_join(updaterThreadID, NULL);
 
-    if (restart) {
+    if (isRestart) {
         sigset_t sigs;
         sigprocmask(SIG_SETMASK, &sigs, 0);
         execvp(argv[0], argv);

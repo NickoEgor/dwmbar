@@ -1,5 +1,5 @@
 #!/bin/bash
-# vim: ft=sh
+# vim: ft=bash
 
 sendSignal() {
     echo "$1 0" > /tmp/dwmbar.fifo

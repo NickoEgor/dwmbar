@@ -25,4 +25,4 @@ static const char delimiter = '|';
 static const int withSpaces = 1;
 
 /* path to dwmbar fifo */
-static const char fifo[] = "/tmp/dwmbar.fifo";
+static const char fifoPath[] = "/tmp/dwmbar.fifo";

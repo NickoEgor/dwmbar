@@ -1,31 +1,38 @@
 PREFIX = ~/.local
-BLOCKS = ~/.local/share/dwmbar/blocks
+BLOCKS = $(PREFIX)/share/dwmbar/blocks
 SOURCES = dwmbar.c
 BINARY = dwmbar
 
-.PHONY: build install install-blocks uninstall clean
-default: build install
+.PHONY: config build install run restart install-blocks uninstall clean
+default: build install restart
 
-build: config.h
-	${CC} -Wall -Wextra -pedantic -o ${BINARY} ${SOURCES} -lpthread -lX11
+config:
+	[ -f config.h ] || cp config.def.h config.h
 
-config.h:
-	cp config.def.h $@
+build: config
+	$(CC) -Wall -Wextra -pedantic -o $(BINARY) $(SOURCES) -lpthread -lX11
 
-install: build
-	mkdir -p ${PREFIX}/bin
-	cp -f {${BINARY},dwmlistener.sh} ${PREFIX}/bin
-	chmod 755 ${PREFIX}/bin/{${BINARY},dwmlistener.sh}
+install:
+	[ -f "$(BINARY)" ] || exit 1
+	mkdir -p $(PREFIX)/bin
+	cp -f {$(BINARY),dwmlistener.sh} $(PREFIX)/bin
+	chmod 755 $(PREFIX)/bin/{$(BINARY),dwmlistener.sh}
+
+run:
+	./$(BINARY)
 
 restart:
 	pkill -USR1 $(BINARY)
 
+kill:
+	pkill $(BINARY)
+
 install-blocks:
-	mkdir -p ${BLOCKS}
-	cp -rn blocks/* ${BLOCKS}
+	mkdir -p $(BLOCKS)
+	cp -rn blocks/* $(BLOCKS)
 
 uninstall:
-	rm ${PREFIX}/bin/{dwmbar,dwmlistener.sh}
+	rm $(PREFIX)/bin/{$(BINARY),dwmlistener.sh}
 
 clean:
-	rm -f ${BINARY}
+	rm -f $(BINARY)
