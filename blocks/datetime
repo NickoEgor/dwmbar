@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 case $BLOCK_BUTTON in
-    1) $TERMINAL -c dropdown -e showcalendar ;;
+    3) setsid "$TERMINAL" -c dropdown -e showcalendar & ;;
 esac
 
 echo "📅 $(date '+%R %d/%m/%Y %a')"
