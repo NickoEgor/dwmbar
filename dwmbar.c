@@ -227,8 +227,16 @@ void expandBlockCommands() {
 }
 
 int openFifo() {
-    /* create fifo if it doesn't exist */
-    if (mkfifo(fifoPath, 0622) < 0 && errno != EEXIST) {
+    /* trying to remove old fifo file */
+    if (unlink(fifoPath) == 0) {
+        fprintf(stderr, "Removed old file: %s\n", fifoPath);
+    } else if (errno != ENOENT) {
+        perror("unlink() failed");
+        return -1;
+    }
+
+    /* create fifo */
+    if (mkfifo(fifoPath, 0622) < 0) {
         perror("mkfifo() failed");
         return -1;
     }
