@@ -22,7 +22,9 @@ run:
 	./$(BINARY)
 
 restart:
-	pkill -USR1 $(BINARY)
+	if pgrep dwmbar ; then \
+		pkill -USR1 $(BINARY) ;\
+	fi
 
 kill:
 	pkill $(BINARY)

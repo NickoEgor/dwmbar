@@ -4,19 +4,21 @@ format="🎹 <song> <stat>"
 name_length=60
 
 case $BLOCK_BUTTON in
-    1) playerctl play-pause >/dev/null 2>&1 ;;
-    3) setsid "$TERMINAL" -e ncmpcpp >/dev/null 2>&1 & ;;
-    4) playerctl previos >/dev/null 2>&1 ;;
-    5) playerctl next >/dev/null 2>&1 ;;
-esac
+    1) playerctl play-pause ;;
+    2) playerctl -a pause ;;
+    3) playerctld shift ;;
+    4) playerctl previous ;;
+    5) playerctl next ;;
+    6) setsid "$TERMINAL" -e ncmpcpp & ;;
+esac >/dev/null 2>&1
 
 status=$(playerctl status 2>&1 | tr '[:upper:]' '[:lower:]')
 case "$status" in
-    stopped)    echo "$format" | sed -n "s/<song>/Player stopped/g ; s/<stat>/⏹/gp" && exit ;;
-    no*)        echo "$format" | sed -n "s/<song>/No players found/g ; s/<stat>/⏹/gp" && exit ;;
-    playing)    stat='⏸' ;;
-    paused)     stat='▶' ;;
-    *)          stat='❓' ;;
+    stopped) echo "$format" | sed -n "s/<song>/Player stopped/g ; s/<stat>/⏹/gp" && exit ;;
+    no*)     echo "$format" | sed -n "s/<song>/No players found/g ; s/<stat>/⏹/gp" && exit ;;
+    playing) stat='⏸' ;;
+    paused)  stat='▶' ;;
+    *)       stat='❓' ;;
 esac
 
 song=$(playerctl metadata --format "{{ artist }} - {{ title }}")
