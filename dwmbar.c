@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <wordexp.h>
 
-#define LEN(X) (sizeof(X) / sizeof(X[0]))
+#define BUF_LEN(X) (sizeof(X) / sizeof(X[0]))
 
 typedef struct {
     char *name;
@@ -29,25 +29,27 @@ static Display *dpy;
 static int screen;
 static Window root;
 
-static int isRunning = 1;
+volatile sig_atomic_t isRunning = 1;
 static int isRestart = 0;
 
 #define BAR_MAX_LEN 512
 static char oldStatusStr[BAR_MAX_LEN + 1];
 static char newStatusStr[BAR_MAX_LEN + 1];
 
-#define CMDMAXLEN 512
-static char cmd[CMDMAXLEN + 1];
+#define CMD_MAX_LEN 512
+static char cmd[CMD_MAX_LEN + 1];
 
+#define BLOCKS_AMOUNT (BUF_LEN(blocks))
 #define BLOCK_MAX_LEN 128
-static char cache[LEN(blocks)][BLOCK_MAX_LEN + 1];
+static char cache[BLOCKS_AMOUNT][BLOCK_MAX_LEN + 1];
 
 #define BLOCKS_PATH_MAX_LEN 450
 static char blocks_path[BLOCKS_PATH_MAX_LEN + 1];
 
-#define FIFO_BUFFER 255
+#define FIFO_BUFFER_LEN 255
 
 #define EMPTY_OUTPUT "..."
+#define LOG_PREFIX "dwmbar: "
 
 pthread_t updaterThreadID;
 pthread_mutex_t updateLock = PTHREAD_MUTEX_INITIALIZER;
@@ -113,7 +115,7 @@ void updateStatus() {
     int k = 0;
     int delimWidth = withSpaces ? 4 : 2;
     /* leave space for last \0 */
-    for (size_t i = 0; i < LEN(blocks) && k < BAR_MAX_LEN - 1; ++i) {
+    for (size_t i = 0; i < BLOCKS_AMOUNT && k < BAR_MAX_LEN - 1; ++i) {
         /* check i > 0 to skip first block */
         if (i && k + delimWidth < BAR_MAX_LEN - 1) {
             if (withSpaces) newStatusStr[k++] = ' ';
@@ -174,7 +176,7 @@ void getCommand(const Block *block, char *output, int button) {
 }
 
 size_t getBlockIndex(const char *name) {
-    for (size_t i = 0; i < LEN(blocks); i++) {
+    for (size_t i = 0; i < BLOCKS_AMOUNT; i++) {
         if (strcmp(blocks[i].name, name) == 0) return i;
     }
 
@@ -189,7 +191,7 @@ void *periodicUpdater(void *vargp) {
     unsigned int time = 0;
 
     while (isRunning) {
-        for (size_t i = 0; i < LEN(blocks); i++) {
+        for (size_t i = 0; i < BLOCKS_AMOUNT; i++) {
             current = blocks + i;
             if (time % current->interval == 0) getCommand(current, cache[i], 0);
         }
@@ -202,10 +204,9 @@ void *periodicUpdater(void *vargp) {
 }
 
 void signalHandler(int signum) {
-    /* suppress warn */
-    (void)signum;
-
-    fprintf(stderr, "Stopping...\n");
+    // TODO: probably need to get rid of fprintf
+    // https://stackoverflow.com/questions/16891019/how-to-avoid-using-printf-in-a-signal-handler
+    fprintf(stderr, LOG_PREFIX "Signal %d: %s. Stopping...\n", signum, strsignal(signum));
     isRunning = 0;
 }
 
@@ -214,8 +215,9 @@ void restartHandler(int signum) {
     signalHandler(signum);
 }
 
-int isnumber(const char *str) {
-    for (size_t i = 0; i < strlen(str); ++i)
+int isNumber(const char *str, unsigned long buf_max_len) {
+    unsigned long len = strnlen(str, buf_max_len);
+    for (size_t i = 0; i < len; ++i)
         if (!isdigit(str[i])) return 0;
     return 1;
 }
@@ -226,38 +228,44 @@ void expandBlockCommands() {
     copyBuffer(blocks_path, exp_result.we_wordv[0], BLOCKS_PATH_MAX_LEN);
 }
 
-int openFifo() {
-    /* trying to remove old fifo file */
+void removeFifoIfExists() {
     if (unlink(fifoPath) == 0) {
-        fprintf(stderr, "Removed old file: %s\n", fifoPath);
+        fprintf(stderr, LOG_PREFIX "Removed old file: %s\n", fifoPath);
     } else if (errno != ENOENT) {
-        perror("unlink() failed");
-        return -1;
+        perror(LOG_PREFIX "unlink() failed");
+        return;
     }
+}
 
+void createFifo() {
     /* create fifo */
     if (mkfifo(fifoPath, 0622) < 0) {
-        perror("mkfifo() failed");
-        return -1;
+        perror(LOG_PREFIX "mkfifo() failed");
+        return;
     }
+}
 
-    /* open fifo */
-    int fifoFd;
-    if ((fifoFd = open(fifoPath, O_RDONLY | O_RSYNC | O_NONBLOCK)) < 0) {
-        perror("open() failed");
+int openFifo() {
+    // https://stackoverflow.com/questions/21468856/check-if-file-is-a-named-pipe-fifo-in-c#comment32401662_21468960
+
+    int fifoFd = -1;
+
+    /* open fifo in non-block mode to check type */
+    if ((fifoFd = open(fifoPath, O_RDWR | O_NONBLOCK)) < 0) {
+        perror(LOG_PREFIX "open() failed");
         return -1;
     }
 
     /* read fifo stats */
     struct stat fifoStat;
     if (fstat(fifoFd, &fifoStat) < 0) {
-        perror("fstat() failed");
+        perror(LOG_PREFIX "fstat() failed");
         return -1;
     }
 
     /* check that file is fifo */
     if (!S_ISFIFO(fifoStat.st_mode)) {
-        fprintf(stderr, "File is not FIFO: %s\n", fifoPath);
+        fprintf(stderr, LOG_PREFIX "File is not FIFO: %s\n", fifoPath);
         return -1;
     }
 
@@ -267,11 +275,11 @@ int openFifo() {
 int main(int argc, char **argv) {
     (void)argc;
 
-    fprintf(stderr, "Starting bar...\n");
+    fprintf(stderr, LOG_PREFIX "Starting bar...\n");
 
     /* set periodical updates */
     if (pthread_create(&updaterThreadID, NULL, &periodicUpdater, NULL)) {
-        perror("pthread_create() failed");
+        perror(LOG_PREFIX "pthread_create() failed");
         return 1;
     }
 
@@ -300,58 +308,71 @@ int main(int argc, char **argv) {
 
     expandBlockCommands();
 
-    char fifoBuffer[FIFO_BUFFER + 1] = {0};
-    char blockNameBuffer[FIFO_BUFFER + 1] = {0};
+    char fifoBuffer[FIFO_BUFFER_LEN + 1] = {0};
+    char blockNameBuffer[FIFO_BUFFER_LEN + 1] = {0};
 
     fd_set readFds;
     fd_set errorFds;
 
-    while (isRunning) {
-        fprintf(stderr, "Opening fifo: %s\n", fifoPath);
-        int fifoFd = openFifo();
-        if (fifoFd == -1) return 1;
+    removeFifoIfExists();
+    createFifo();
 
-        while (1) {
+    while (isRunning) {
+        fprintf(stderr, LOG_PREFIX "Opening fifo: %s\n", fifoPath);
+        int fifoFd = -1;
+        if ((fifoFd = openFifo()) < 0) {
+            fprintf(stderr, LOG_PREFIX "Failed to create fifo: %s", fifoPath);
+            return 1;
+        }
+
+        fprintf(stderr, LOG_PREFIX "Start reading fifo\n");
+        while (isRunning) {
             unsigned int button = 0;
-            resetBuffer(fifoBuffer, FIFO_BUFFER);
-            resetBuffer(blockNameBuffer, FIFO_BUFFER);
+            resetBuffer(fifoBuffer, FIFO_BUFFER_LEN);
+            resetBuffer(blockNameBuffer, FIFO_BUFFER_LEN);
 
             FD_ZERO(&readFds);
             FD_ZERO(&errorFds);
             FD_SET(fifoFd, &readFds);
 
             if (pselect(fifoFd + 1, &readFds, NULL, &errorFds, NULL, &oldset) < 0) {
-                perror("pselect() caught signal");
+                perror(LOG_PREFIX "pselect() caught signal");
                 isRunning = 0;
                 break;
             }
 
             if (FD_ISSET(fifoFd, &errorFds)) {
-                fprintf(stderr, "FIFO fd error\n");
+                fprintf(stderr, LOG_PREFIX "fifo fd error\n");
                 continue;
             }
 
             if (!FD_ISSET(fifoFd, &readFds)) {
-                fprintf(stderr, "FIFO fd not in read fdset\n");
+                fprintf(stderr, LOG_PREFIX "fifo fd not in read fdset\n");
                 continue;
             }
 
-            int nread = read(fifoFd, fifoBuffer, FIFO_BUFFER);
+            int nread = read(fifoFd, fifoBuffer, FIFO_BUFFER_LEN);
             if (nread < 0) {
-                perror("read() failed");
+                perror(LOG_PREFIX "read() failed");
                 continue;
             } else if (nread == 0) {
-                /* EOF */
-                break;
+                if (errno == EAGAIN) {
+                    fprintf(stderr, LOG_PREFIX "read() EAGAIN\n");
+                    continue;
+                } else {
+                    fprintf(stderr, LOG_PREFIX "read() received EOF\n");
+                    // perror(LOG_PREFIX "read() received EOF");
+                    break;
+                }
             }
 
             if (sscanf(fifoBuffer, "%s %u\n", blockNameBuffer, &button) < 0) {
-                perror("sscanf() failed");
+                perror(LOG_PREFIX "sscanf() failed");
                 continue;
             }
 
             int block = 0;
-            if (isnumber(blockNameBuffer)) {
+            if (isNumber(blockNameBuffer, FIFO_BUFFER_LEN)) {
                 /* used for direct clicks on bar */
                 block = atoi(blockNameBuffer);
                 /* input block starts with 1, not 0, so we decrease it */
@@ -360,27 +381,31 @@ int main(int argc, char **argv) {
                 /* used for updates coming from pipe */
                 block = getBlockIndex(blockNameBuffer);
                 if (block == -1) {
-                    fprintf(stderr, "Invalid block name: %s\n", blockNameBuffer);
+                    fprintf(stderr, LOG_PREFIX "Invalid block name: %s\n", blockNameBuffer);
                     continue;
                 }
             }
+
             getCommand(&blocks[block], cache[block], button);
             updateStatus();
         }
 
-        fprintf(stderr, "Closing fifo...\n");
+        fprintf(stderr, LOG_PREFIX "Closing fifo...\n");
         if (close(fifoFd) < 0) {
-            perror("close() failed");
+            perror(LOG_PREFIX "close() failed");
             break;
         }
     }
 
-    fprintf(stderr, "Cleaning up...\n");
+    fprintf(stderr, LOG_PREFIX "Cleaning up...\n");
     pthread_mutex_destroy(&getLock);
     pthread_mutex_destroy(&updateLock);
     pthread_join(updaterThreadID, NULL);
+    removeFifoIfExists();
 
     if (isRestart) {
+        // TODO: https://stackoverflow.com/questions/60691017/how-to-repeatedly-restart-a-program-via-signal
+
         sigset_t sigs;
         sigprocmask(SIG_SETMASK, &sigs, 0);
         execvp(argv[0], argv);
